@@ -1,6 +1,11 @@
 #!/bin/bash
-INBOX=``/inbox/``
-OUTBOX=``/outbox/``
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+INBOX=``/inbox/`` #ввести нужную папку для которой делать бэкап
+OUTBOX=``/outbox/`` #ввести нужную папку в которую делать бэкап
 
 CHNGEDATE=$(stat --format '%y' $INBOX |grep -Eo '[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}')
 CHNGETIME=$(stat --format '%y' $INBOX |grep -Eo '[[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}')
@@ -11,37 +16,38 @@ if [ $? -eq 0 ]
     echo Directory creation success!
   else
     echo Directory creation failed! Code=$?.
-    exit
+    exit 1
 fi
 cd $OUTBOX$CHNGEDATE/
 
-#touch $CHNGETIME-errors.txt
-echo $(grep  'error' $INBOX/*.log) >> $CHNGETIME-errors.txt
+sudo touch $CHNGETIME-errors.txt
+echo $(grep  'error' $INBOX/*.log) | sudo tee -a $CHNGETIME-errors.txt
 if [ $? -eq 0 ]
   then  
     echo Errors adding success!
   else
     echo Errors adding failed! Code=$?.
-    exit
+    exit 1
 fi
 
 if [ -e $CHNGETIME.files.tar.gz]
   then
     echo Archive already exists!
-    exit
+    exit 1
   else
-    tar cvzf $CHNGETIME.files.tar.gz $INBOX
+    sudo tar -cvzf ./$CHNGETIME.files.tar.gz $INBOX
 if [ $? -eq 0 ]
   then
-    rm $INBOX/*
+    sudo rm $INBOX*
   else 
     echo Archive creation failed! Code=$?.
-    exit
+    exit 1
 fi
 if [ $? -eq 0 ]
   then
     echo Backup execution success! Code=$?.
+    exit 0
   else 
     echo Backup execution failed! Code=$?.
-    exit
+    exit 1
 fi
