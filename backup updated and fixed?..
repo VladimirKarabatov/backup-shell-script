@@ -1,53 +1,58 @@
 #!/bin/bash
-if [[ $EUID -ne 0 ]]; then
-   echo "This script must be run as root" 1>&2
-   exit 1
-fi
+INBOX=``inbox`` #ввести нужную папку для которой делать бэкап
+OUTBOX=``outbox`` #ввести нужную папку в которую делать бэкап
+#  лучше вообще без слэшей, так будет проще потом не запутаться в путях каталогов, состящих из переменных
+# Ну и лучше передавать путь к папке INBOX параметром к скрипту откуда мы делаем бэкап
+function check_pass {
+	local RESULT="${MSG} : success!"
+	if [ $? -ne 0 ]
+		then
+			RESULT="ERROR: ${MSG} failed. Error code: $?"
+			exit $?
+		fi
+	echo "${RESULT}"
+}
+# действовать суперюзером не очень безопасная тема, просит скрипт таких полномочийц из-за по
+# пытки создания директории в родительском каталоге
+MSG="Script is started"
+CHANGEDATE="$(stat --format '%y' $INBOX |grep -Eo '[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}')"
+# : в путях каталогов  - linux заэкранирует, лучше тоже "-"
+CHANGETIME="$(stat --format '%y' $INBOX |grep -Eo '[[:digit:]]{2}-[[:digit:]]{2}-[[:digit:]]{2}')"
+# раз  тебя похожий кусок кода, и очень хочется то лучше обернуть в функцию, в баш  и даже в batch они есть
+# но на самом деле линукс умный, сам все прервет и вывалится с кодом ошибки операции на которой все упало
+# так что тебе достаточно просто менять для пользователя ообщение которое выводит ход операции и добавлять к нему код ошибки
+OUTPUTTDIR="${OUTBOX}/${CHANGEDATE}"
+MSG="Creating directory: ${OUTPUTTDIR}"
+mkdir -p "${OUTPUTTDIR}"
+check_pass
+# тут и дальше слэши чисто стилистика. вот тут видно как названия без слэшэй позволяют не запутаться.
+# сли имена с пробелами то лучше в двойных кавычкух и с ${}
+# если тут сменить папку, то логов не найдем
+# cd "${CURRENTDIR}"
+#если ошибок в файлах не будет, то и создавать его не нужно
 
-INBOX=``/inbox/`` #ввести нужную папку для которой делать бэкап
-OUTBOX=``/outbox/`` #ввести нужную папку в которую делать бэкап
+MSG="Parsing log files for errors... "
+touch "${CHANGETIME}-errors.txt"
+echo "$(grep error "${INBOX}"/*.log)" | sudo tee -a "${OUTPUTDIR}/${CHANGETIME}-errors.txt"
 
-CHNGEDATE=$(stat --format '%y' $INBOX |grep -Eo '[[:digit:]]{4}-[[:digit:]]{2}-[[:digit:]]{2}')
-CHNGETIME=$(stat --format '%y' $INBOX |grep -Eo '[[:digit:]]{2}:[[:digit:]]{2}:[[:digit:]]{2}')
-
-mkdir -p $OUTBOX$CHNGEDATE/
-if [ $? -eq 0 ]
-  then  
-    echo Directory creation success!
-  else
-    echo Directory creation failed! Code=$?.
-    exit 1
-fi
-cd $OUTBOX$CHNGEDATE/
-
-sudo touch $CHNGETIME-errors.txt
-echo $(grep  'error' $INBOX/*.log) | sudo tee -a $CHNGETIME-errors.txt
-if [ $? -eq 0 ]
-  then  
-    echo Errors adding success!
-  else
-    echo Errors adding failed! Code=$?.
-    exit 1
-fi
-
-if [ -e $CHNGETIME.files.tar.gz]
+ARCHIVE_FILE_NAME="${OUTPUTTDIR}/$CHANGETIME.files.tar.gz"
+MSG="Creating backup archive for ${CHANGEDATE}, Filename "
+# пробел после скобки
+if [ -e $ARCHIVE_FILE_NAME ]
   then
-    echo Archive already exists!
+    MSG="${ARCHIVE_FILE_NAME} Already exists"
     exit 1
   else
-    sudo tar -cvzf ./$CHNGETIME.files.tar.gz $INBOX
-if [ $? -eq 0 ]
-  then
-    sudo rm $INBOX*
-  else 
-    echo Archive creation failed! Code=$?.
-    exit 1
+    tar -cvzf "${ARCHIVE_FILE_NAME}" "${INBOX}"
+    MSG="Sussess! BACKUP FILE LOCATION: ${ARCHIVE_FILE_NAME}"
 fi
-if [ $? -eq 0 ]
-  then
-    echo Backup execution success! Code=$?.
-    exit 0
-  else 
-    echo Backup execution failed! Code=$?.
-    exit 1
-fi
+check_pass
+## По идее если мы тут то мы все еще выполняемся и значит проверка лишняя у rm есть флаги -rvf
+## r - рекурсивно все что под каталогом
+## f - не задавать вопросов
+## v - verbose - выводить в консоль что имено удаляем. такой флаг много у кого
+MSG="Removing source data from ${INBOX}"
+rm -rvf "${INBOX}/*"
+check_pass
+echo "Backup success!\n file location: ${ARCHIVE_FILE_NAME}"
+exit 0
